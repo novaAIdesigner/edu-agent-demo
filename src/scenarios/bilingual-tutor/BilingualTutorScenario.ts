@@ -1,6 +1,7 @@
 import { ScenarioBase } from '../ScenarioBase.js';
 import { getBilingualTutorPrompt } from './prompts.js';
 import type { ScenarioId } from '../../core/types.js';
+import { buildLanguageOptions } from '../../core/types.js';
 
 export class BilingualTutorScenario extends ScenarioBase {
   private l1 = 'Chinese';
@@ -23,21 +24,14 @@ export class BilingualTutorScenario extends ScenarioBase {
       <div>
         <label class="block text-xs font-medium text-gray-400 mb-1">Native Language (L1)</label>
         <select id="bt-l1" class="w-full rounded-lg border border-gray-700 bg-gray-800 px-3 py-1.5 text-sm text-gray-200">
-          <option value="Chinese" selected>Chinese (中文)</option>
-          <option value="Spanish">Spanish (Espanol)</option>
-          <option value="Japanese">Japanese (日本語)</option>
-          <option value="Korean">Korean (한국어)</option>
-          <option value="French">French (Francais)</option>
+          ${buildLanguageOptions('Chinese')}
         </select>
       </div>
 
       <div>
         <label class="block text-xs font-medium text-gray-400 mb-1">Target Language (L2)</label>
         <select id="bt-l2" class="w-full rounded-lg border border-gray-700 bg-gray-800 px-3 py-1.5 text-sm text-gray-200">
-          <option value="English" selected>English</option>
-          <option value="Chinese">Chinese (中文)</option>
-          <option value="Spanish">Spanish (Espanol)</option>
-          <option value="French">French (Francais)</option>
+          ${buildLanguageOptions('English')}
         </select>
       </div>
 

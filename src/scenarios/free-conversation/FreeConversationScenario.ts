@@ -1,9 +1,11 @@
 import { ScenarioBase } from '../ScenarioBase.js';
-import { predefinedInstructions, predefinedInstructionsConcise, predefinedInstructionsReadAlong } from './prompts.js';
+import { getConversationPrompt, getConcisePrompt, getReadAlongPrompt } from './prompts.js';
 import type { ScenarioId } from '../../core/types.js';
+import { buildLanguageOptions } from '../../core/types.js';
 
 export class FreeConversationScenario extends ScenarioBase {
   private mode: 'conversation' | 'concise' | 'readAlong' = 'conversation';
+  private language = 'English';
 
   get id(): ScenarioId { return 'free-conversation'; }
   get label(): string { return 'Free Conversation'; }
@@ -12,9 +14,9 @@ export class FreeConversationScenario extends ScenarioBase {
 
   getInstructions(): string {
     switch (this.mode) {
-      case 'concise': return predefinedInstructionsConcise;
-      case 'readAlong': return predefinedInstructionsReadAlong;
-      default: return predefinedInstructions;
+      case 'concise': return getConcisePrompt(this.language);
+      case 'readAlong': return getReadAlongPrompt(this.language);
+      default: return getConversationPrompt(this.language);
     }
   }
 
@@ -22,6 +24,13 @@ export class FreeConversationScenario extends ScenarioBase {
     container.innerHTML = `
       <h3 class="text-sm font-semibold text-white">Free Conversation + PA</h3>
       <p class="text-xs text-gray-500">Open conversation with real-time pronunciation assessment. Words are color-coded by accuracy.</p>
+
+      <div>
+        <label class="block text-xs font-medium text-gray-400 mb-1">Language</label>
+        <select id="fc-lang" class="w-full rounded-lg border border-gray-700 bg-gray-800 px-3 py-1.5 text-sm text-gray-200">
+          ${buildLanguageOptions('English')}
+        </select>
+      </div>
 
       <div>
         <label class="block text-xs font-medium text-gray-400 mb-1">Mode</label>
@@ -55,6 +64,9 @@ export class FreeConversationScenario extends ScenarioBase {
       </div>
     `;
 
+    container.querySelector('#fc-lang')?.addEventListener('change', (e) => {
+      this.language = (e.target as HTMLSelectElement).value;
+    });
     container.querySelectorAll<HTMLInputElement>('input[name="fc-mode"]').forEach(r => {
       r.addEventListener('change', () => {
         this.mode = r.value as typeof this.mode;

@@ -87,3 +87,50 @@ export interface AudioBytesWithTimestamp {
   startByte: number;
   endByte: number;
 }
+
+/** All languages supported by Pronunciation Assessment, with locale codes. */
+export const PA_LANGUAGES: { value: string; label: string; locale: string }[] = [
+  { value: 'English', label: 'English (US)', locale: 'en-US' },
+  { value: 'Spanish', label: 'Spanish (Spain)', locale: 'es-ES' },
+  { value: 'French', label: 'French (France)', locale: 'fr-FR' },
+  { value: 'Chinese', label: 'Chinese (Mandarin)', locale: 'zh-CN' },
+  { value: 'Japanese', label: 'Japanese', locale: 'ja-JP' },
+  // ── additional PA-supported languages ──
+  { value: 'Arabic (Egypt)', label: 'Arabic (Egypt)', locale: 'ar-EG' },
+  { value: 'Arabic (Saudi Arabia)', label: 'Arabic (Saudi Arabia)', locale: 'ar-SA' },
+  { value: 'Catalan', label: 'Catalan', locale: 'ca-ES' },
+  { value: 'Chinese (Cantonese)', label: 'Chinese (Cantonese)', locale: 'zh-HK' },
+  { value: 'Chinese (Taiwanese)', label: 'Chinese (Taiwanese)', locale: 'zh-TW' },
+  { value: 'Danish', label: 'Danish', locale: 'da-DK' },
+  { value: 'Dutch', label: 'Dutch', locale: 'nl-NL' },
+  { value: 'English (Australia)', label: 'English (Australia)', locale: 'en-AU' },
+  { value: 'English (Canada)', label: 'English (Canada)', locale: 'en-CA' },
+  { value: 'English (India)', label: 'English (India)', locale: 'en-IN' },
+  { value: 'English (UK)', label: 'English (UK)', locale: 'en-GB' },
+  { value: 'Finnish', label: 'Finnish', locale: 'fi-FI' },
+  { value: 'French (Canada)', label: 'French (Canada)', locale: 'fr-CA' },
+  { value: 'German', label: 'German', locale: 'de-DE' },
+  { value: 'Hindi', label: 'Hindi', locale: 'hi-IN' },
+  { value: 'Italian', label: 'Italian', locale: 'it-IT' },
+  { value: 'Korean', label: 'Korean', locale: 'ko-KR' },
+  { value: 'Malay', label: 'Malay', locale: 'ms-MY' },
+  { value: 'Norwegian', label: 'Norwegian', locale: 'nb-NO' },
+  { value: 'Polish', label: 'Polish', locale: 'pl-PL' },
+  { value: 'Portuguese (Brazil)', label: 'Portuguese (Brazil)', locale: 'pt-BR' },
+  { value: 'Portuguese (Portugal)', label: 'Portuguese (Portugal)', locale: 'pt-PT' },
+  { value: 'Russian', label: 'Russian', locale: 'ru-RU' },
+  { value: 'Spanish (Mexico)', label: 'Spanish (Mexico)', locale: 'es-MX' },
+  { value: 'Swedish', label: 'Swedish', locale: 'sv-SE' },
+  { value: 'Tamil', label: 'Tamil', locale: 'ta-IN' },
+  { value: 'Thai', label: 'Thai', locale: 'th-TH' },
+  { value: 'Vietnamese', label: 'Vietnamese', locale: 'vi-VN' },
+];
+
+/** Build an HTML <option> list from PA_LANGUAGES. First `topCount` items are shown above a separator. */
+export function buildLanguageOptions(selectedValue = 'English', topCount = 5): string {
+  return PA_LANGUAGES.map((lang, i) => {
+    const sep = i === topCount ? '<option disabled>──────────</option>' : '';
+    const sel = lang.value === selectedValue ? ' selected' : '';
+    return `${sep}<option value="${lang.value}"${sel}>${lang.label}</option>`;
+  }).join('\n');
+}

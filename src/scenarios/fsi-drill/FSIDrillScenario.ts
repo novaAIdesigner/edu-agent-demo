@@ -1,6 +1,7 @@
 import { ScenarioBase } from '../ScenarioBase.js';
 import { getFSIDrillPrompt } from './prompts.js';
 import type { ScenarioId } from '../../core/types.js';
+import { buildLanguageOptions } from '../../core/types.js';
 
 export class FSIDrillScenario extends ScenarioBase {
   private drillType = 'substitution';
@@ -40,10 +41,7 @@ export class FSIDrillScenario extends ScenarioBase {
       <div>
         <label class="block text-xs font-medium text-gray-400 mb-1">Target Language</label>
         <select id="fsi-lang" class="w-full rounded-lg border border-gray-700 bg-gray-800 px-3 py-1.5 text-sm text-gray-200">
-          <option value="English" selected>English</option>
-          <option value="Spanish">Spanish</option>
-          <option value="French">French</option>
-          <option value="Chinese">Chinese</option>
+          ${buildLanguageOptions('English')}
         </select>
       </div>
 
