@@ -1,0 +1,89 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+/* Pronunciation Assessment word-level coloring (dark theme) */
+@layer components {
+  .pa-word-good {
+    @apply text-emerald-400 font-medium;
+  }
+  .pa-word-fair {
+    @apply text-amber-400 font-medium;
+  }
+  .pa-word-bad {
+    @apply text-red-400 font-semibold underline decoration-red-500;
+  }
+  .pa-word-omission {
+    @apply text-gray-500 line-through;
+  }
+  .pa-word-insertion {
+    @apply text-orange-400 italic;
+  }
+}
+
+/* Streaming cursor animation */
+.typing-cursor::after {
+  content: '\258B';
+  animation: blink 1s step-end infinite;
+  @apply text-blue-400;
+}
+
+@keyframes blink {
+  50% { opacity: 0; }
+}
+
+/* Audio level meter */
+.level-bar {
+  transition: width 100ms ease-out;
+}
+
+/* Smooth tab transitions */
+.tab-panel {
+  animation: fadeIn 0.15s ease-out;
+}
+
+@keyframes fadeIn {
+  from { opacity: 0; transform: translateY(4px); }
+  to { opacity: 1; transform: translateY(0); }
+}
+
+/* Scrollbar styling (dark) */
+.custom-scroll::-webkit-scrollbar {
+  width: 6px;
+}
+.custom-scroll::-webkit-scrollbar-track {
+  @apply bg-transparent;
+}
+.custom-scroll::-webkit-scrollbar-thumb {
+  @apply rounded-full bg-gray-700;
+}
+.custom-scroll::-webkit-scrollbar-thumb:hover {
+  @apply bg-gray-600;
+}
+
+/* SKILL.md code block styling */
+.skill-code {
+  @apply rounded-lg bg-gray-950 p-4 text-sm text-gray-200 overflow-x-auto border border-gray-800;
+  font-family: 'Cascadia Code', 'Fira Code', 'JetBrains Mono', monospace;
+}
+
+/* Hero gradient animation */
+@keyframes gradient-shift {
+  0%, 100% { background-position: 0% 50%; }
+  50% { background-position: 100% 50%; }
+}
+
+.hero-gradient {
+  background: linear-gradient(135deg, #1e3a8a 0%, #1e40af 25%, #2563eb 50%, #0891b2 75%, #1e3a8a 100%);
+  background-size: 200% 200%;
+  animation: gradient-shift 8s ease infinite;
+}
+
+/* Glow effect for cards */
+.glow-card {
+  transition: box-shadow 0.3s ease, border-color 0.3s ease;
+}
+.glow-card:hover {
+  box-shadow: 0 0 20px rgba(59, 130, 246, 0.15);
+  border-color: rgba(59, 130, 246, 0.4);
+}
