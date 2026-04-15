@@ -17,7 +17,7 @@ export class CoverPage {
         <div class="absolute inset-0 bg-[url('data:image/svg+xml;base64,PHN2ZyB3aWR0aD0iNjAiIGhlaWdodD0iNjAiIHZpZXdCb3g9IjAgMCA2MCA2MCIgeG1sbnM9Imh0dHA6Ly93d3cudzMub3JnLzIwMDAvc3ZnIj48ZyBmaWxsPSJub25lIiBmaWxsLXJ1bGU9ImV2ZW5vZGQiPjxnIGZpbGw9IiNmZmYiIGZpbGwtb3BhY2l0eT0iMC4wMyI+PGNpcmNsZSBjeD0iMzAiIGN5PSIzMCIgcj0iMiIvPjwvZz48L2c+PC9zdmc+')] opacity-50"></div>
         <div class="relative mx-auto max-w-screen-xl px-6 py-20 text-center">
           <div class="mb-6 inline-flex items-center gap-2 rounded-full bg-white/10 px-4 py-1.5 text-sm text-blue-200 backdrop-blur-sm ring-1 ring-white/20">
-            <img src="/ai-foundry.png" alt="Azure AI Foundry" class="h-5 w-5" />
+            <img src="${import.meta.env.BASE_URL}ai-foundry.png" alt="Azure AI Foundry" class="h-5 w-5" />
             Powered by Microsoft Azure AI Foundry
           </div>
           <h1 class="text-4xl font-extrabold tracking-tight text-white sm:text-5xl lg:text-6xl">
