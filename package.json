@@ -11,7 +11,7 @@
     "type-check": "tsc --noEmit"
   },
   "dependencies": {
-    "@azure/ai-voicelive": "file:../basic-web-voice-assistant/node_modules/@azure/ai-voicelive",
+    "@azure/ai-voicelive": "file:vendor/azure-ai-voicelive-1.0.0-beta.1.tgz",
     "@azure/core-auth": "^1.9.0",
     "microsoft-cognitiveservices-speech-sdk": "^1.47.0"
   },
