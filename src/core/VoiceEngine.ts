@@ -47,6 +47,7 @@ export class VoiceEngine {
   private currentAssistantMessage = '';
   private messageStartTime?: Date;
   private currentAssistantMessageId?: string;
+  private assistantBubbleCreated = false;
 
   // User transcription state
   private currentUserTranscription = '';
@@ -63,16 +64,18 @@ export class VoiceEngine {
   private recognitionLanguage = 'en-US';
   private silenceTimeout = 1500;
   private enablePronunciationAssessment = true;
-  private paWithReferenceText = true;
   private turnLatencySeq = 0;
   private activeTurnLatency?: TurnLatencyTrace;
-  private audioChunksToAssess: Uint8Array[] = [];
   private audioChunks: AudioBytesWithTimestamp[] = [];
   private audioStartMillis: number | null = null;
   private audioEndMillis: number | null = null;
   private paStreamingPushStream?: speechSDK.PushAudioInputStream;
   private paStreamingActive = false;
   private paStreamingWriteReady: Promise<void> = Promise.resolve();
+  private currentReferenceText?: string;
+  private referenceTextForDisplay?: string;
+  private proactiveGreeting = false;
+  private greetingSent = false;
 
   private audioTimeline = { totalBytes: 0 };
 
@@ -95,8 +98,9 @@ export class VoiceEngine {
   async connect(config: VoiceEngineConfig): Promise<void> {
     try {
       this.enablePronunciationAssessment = config.enablePronunciationAssessment !== false;
-      this.paWithReferenceText = config.paWithReferenceText !== false;
       this.recognitionLanguage = config.recognitionLanguage || 'en-US';
+      this.proactiveGreeting = config.proactiveGreeting === true;
+      this.greetingSent = false;
 
       this.callbacks?.onConnectionStatusChange('connecting');
 
@@ -186,7 +190,6 @@ export class VoiceEngine {
 
   private resetPAState(): void {
     this.audioTimeline.totalBytes = 0;
-    this.audioChunksToAssess = [];
     this.audioChunks = [];
     this.audioStartMillis = null;
     this.audioEndMillis = null;
@@ -217,6 +220,10 @@ export class VoiceEngine {
         this.callbacks?.onEventReceived({ type: 'error', data: args, timestamp: new Date() });
       },
 
+      onSessionUpdated: async (_event: any, _ctx: SessionContext) => {
+        // handled elsewhere
+      },
+
       onResponseCreated: async (event: any, _ctx: SessionContext) => {
         if (this.currentResponseId && this.currentResponseId !== event.response.id) {
           this.clearAudioQueue();
@@ -225,14 +232,8 @@ export class VoiceEngine {
         this.currentAssistantMessage = '';
         this.messageStartTime = new Date();
         this.currentAssistantMessageId = `response_${event.response.id}_${Date.now()}`;
+        this.assistantBubbleCreated = false;
         this.clearAudioQueue();
-        this.callbacks?.onConversationMessageUpdate({
-          role: 'assistant',
-          content: '',
-          timestamp: this.messageStartTime,
-          messageId: this.currentAssistantMessageId,
-          isStreaming: true,
-        });
         this.callbacks?.onAssistantStatusChange('thinking');
         this.callbacks?.onEventReceived({ type: 'response.created', data: event, timestamp: new Date() });
       },
@@ -271,13 +272,15 @@ export class VoiceEngine {
           });
         }
 
-        // Streaming PA: start at speech begin
-        if (this.enablePronunciationAssessment && !this.paWithReferenceText) {
+        // Always start streaming PA at speech begin
+        if (this.enablePronunciationAssessment) {
           this.activeTurnLatency = {
             turnId: ++this.turnLatencySeq,
             speechStoppedAt: 0,
           };
-          this.startStreamingPA(this.activeTurnLatency);
+          const refText = this.currentReferenceText;
+          this.currentReferenceText = undefined;
+          this.startStreamingPA(this.activeTurnLatency, refText);
         }
 
         this.callbacks?.onAssistantStatusChange('listening (speech detected)');
@@ -288,43 +291,29 @@ export class VoiceEngine {
         this.callbacks?.onAssistantStatusChange('processing');
         this.audioEndMillis = event.audioEndInMs;
 
-        if (this.paStreamingActive && this.activeTurnLatency) {
+        if (this.activeTurnLatency) {
           this.activeTurnLatency.speechStoppedAt = performance.now();
-          if (this.paStreamingPushStream) {
-            const stream = this.paStreamingPushStream;
-            const trace = this.activeTurnLatency;
-            this.paStreamingWriteReady = this.paStreamingWriteReady.then(() => {
-              stream.close();
-              trace.paStreamClosedAt = performance.now();
-            });
-          }
-        } else {
-          this.activeTurnLatency = {
-            turnId: ++this.turnLatencySeq,
-            speechStoppedAt: performance.now(),
-          };
+        }
+        if (this.paStreamingActive && this.paStreamingPushStream) {
+          const stream = this.paStreamingPushStream;
+          const trace = this.activeTurnLatency;
+          this.paStreamingWriteReady = this.paStreamingWriteReady.then(() => {
+            stream.close();
+            if (trace) trace.paStreamClosedAt = performance.now();
+          });
         }
 
         this.callbacks?.onEventReceived({ type: 'speech.stopped', data: event, timestamp: new Date() });
       },
 
-      onInputAudioBufferCommitted: async (event: any, _ctx: SessionContext) => {
-        if (this.paStreamingActive) return;
-        this.extractValidAudio();
-        if (
-          this.enablePronunciationAssessment &&
-          this.activeTurnLatency &&
-          !this.activeTurnLatency.paAudioPreparePromise &&
-          !this.activeTurnLatency.preparedPaAudio &&
-          this.audioChunksToAssess.length > 0
-        ) {
-          this.activeTurnLatency.paAudioPreparePromise = this.preparePAAudio();
-        }
+      onInputAudioBufferCommitted: async (_event: any, _ctx: SessionContext) => {
+        // Audio handling is done via streaming PA push stream
       },
 
       onResponseTextDelta: async (event: any, _ctx: SessionContext) => {
         this.currentAssistantMessage += event.delta;
         if (this.currentAssistantMessageId) {
+          this.ensureAssistantBubble();
           this.callbacks?.onConversationMessageUpdate({
             role: 'assistant',
             content: this.currentAssistantMessage,
@@ -338,6 +327,7 @@ export class VoiceEngine {
       onResponseAudioTranscriptDelta: async (event: any, _ctx: SessionContext) => {
         this.currentAssistantMessage += event.delta;
         if (this.currentAssistantMessageId) {
+          this.ensureAssistantBubble();
           this.callbacks?.onConversationMessageUpdate({
             role: 'assistant',
             content: this.currentAssistantMessage,
@@ -373,7 +363,7 @@ export class VoiceEngine {
           isStreaming: false,
         });
 
-        if (!this.enablePronunciationAssessment) {
+        if (!this.enablePronunciationAssessment || !turnTrace.paPromise) {
           turnTrace.paScoreLabel = 'PA disabled';
           this.publishTurnLatencyMessage(turnTrace);
           this.clearPAAudioCache();
@@ -383,46 +373,50 @@ export class VoiceEngine {
           return;
         }
 
-        const [isSuccess, paResult] = this.paWithReferenceText
-          ? await this.runPAForTurn(turnTrace, event.transcript || this.currentUserTranscription || '', true)
-          : await (turnTrace.paPromise || this.runPAForTurn(turnTrace, '', false));
-
-        const paScoreLabel = 'PA analyzed';
-        if (isSuccess && paResult) {
-          try {
-            const paArr = JSON.parse(paResult);
-            if (Array.isArray(paArr) && paArr.length > 0) {
-              const nBest = paArr[0]?.NBest?.[0];
-              const words: any[] = nBest?.Words || [];
-              if (words.length > 0) {
-                const wordSpans = words
-                  .map((w: any) => {
-                    const score = w.PronunciationAssessment?.AccuracyScore ?? 100;
-                    const errorType = w.PronunciationAssessment?.ErrorType || 'None';
-                    let cls = 'pa-word-good';
-                    if (errorType === 'Omission') cls = 'pa-word-omission';
-                    else if (errorType === 'Insertion') cls = 'pa-word-insertion';
-                    else if (score < 60) cls = 'pa-word-bad';
-                    else if (score < 80) cls = 'pa-word-fair';
-                    const escaped = w.Word.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
-                    return `<span class="pa-word ${cls}" title="Score: ${score}, Error: ${errorType}">${escaped}</span>`;
-                  })
-                  .join(' ');
-                turnTrace.wordSpansHtml = wordSpans;
-              }
-            }
-          } catch {
-            // ignore parse errors
-          }
-        }
-        turnTrace.paScoreLabel = paScoreLabel;
-
         this.publishTurnLatencyMessage(turnTrace);
+        this.session?.sendEvent({ type: 'response.create' });
 
-        this.session?.sendEvent({
-          type: 'response.create',
-          additionalInstructions: `This is the pronunciation assessment result for above user speech: '${paResult}'`,
-        });
+        const paPromise = turnTrace.paPromise;
+        const traceRef = turnTrace;
+        paPromise.then(([isSuccess, paResult]) => {
+          if (isSuccess && paResult) {
+            try {
+              const paArr = JSON.parse(paResult);
+              if (Array.isArray(paArr) && paArr.length > 0) {
+                const nBest = paArr[0]?.NBest?.[0];
+                const words: any[] = nBest?.Words || [];
+                if (words.length > 0) {
+                  const wordSpans = words
+                    .map((w: any) => {
+                      const score = w.PronunciationAssessment?.AccuracyScore ?? 100;
+                      const errorType = w.PronunciationAssessment?.ErrorType || 'None';
+                      let cls = 'pa-word-good';
+                      if (errorType === 'Omission') cls = 'pa-word-omission';
+                      else if (errorType === 'Insertion') cls = 'pa-word-insertion';
+                      else if (score < 60) cls = 'pa-word-bad';
+                      else if (score < 80) cls = 'pa-word-fair';
+                      const escaped = w.Word.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
+                      return `<span class="pa-word ${cls}" title="Score: ${score}, Error: ${errorType}">${escaped}</span>`;
+                    })
+                    .join(' ');
+                  traceRef.wordSpansHtml = wordSpans;
+                }
+              }
+            } catch {
+              // ignore parse errors
+            }
+            this.session?.sendEvent({
+              type: 'conversation.item.create',
+              item: {
+                type: 'message',
+                role: 'user',
+                content: [{ type: 'input_text', text: `[Pronunciation assessment result]: ${paResult}` }],
+              },
+            });
+          }
+          traceRef.paScoreLabel = 'PA analyzed';
+          this.publishTurnLatencyMessage(traceRef);
+        }).catch(() => {});
 
         this.currentUserTranscription = '';
         this.userSpeechStartTime = undefined;
@@ -456,6 +450,34 @@ export class VoiceEngine {
         }
       },
 
+      onResponseFunctionCallArgumentsDone: async (event: any, _ctx: SessionContext) => {
+        if (event.name === 'set_reference_text') {
+          try {
+            const args = JSON.parse(event.arguments);
+            if (args.reference_text) {
+              this.currentReferenceText = args.reference_text;
+              this.referenceTextForDisplay = args.reference_text;
+              this.callbacks?.onEventReceived({
+                type: 'set_reference_text',
+                data: { referenceText: args.reference_text },
+                timestamp: new Date(),
+              });
+            }
+          } catch (e) {
+            console.warn('[VoiceEngine] Failed to parse set_reference_text arguments:', e);
+          }
+        }
+        this.session?.sendEvent({
+          type: 'conversation.item.create',
+          item: {
+            type: 'function_call_output',
+            callId: event.callId,
+            output: '{"success":true}',
+          },
+        });
+        this.session?.sendEvent({ type: 'response.create' });
+      },
+
       onServerEvent: async (event: any, _ctx: SessionContext) => {
         this.callbacks?.onEventReceived({ type: event.type, data: event, timestamp: new Date() });
       },
@@ -484,6 +506,23 @@ export class VoiceEngine {
       timestamp: new Date(),
     });
     console.log('[VoiceEngine] Conversation active, sending audio...');
+
+    if (this.proactiveGreeting && !this.greetingSent) {
+      this.greetingSent = true;
+      try {
+        await this.session?.sendEvent({
+          type: 'conversation.item.create',
+          item: {
+            type: 'message',
+            role: 'system',
+            content: [{ type: 'input_text', text: 'Greet the user warmly and briefly introduce the exercise.' }],
+          },
+        });
+        await this.session?.sendEvent({ type: 'response.create' });
+      } catch (e) {
+        console.warn('[VoiceEngine] Failed to send proactive greeting:', e);
+      }
+    }
   }
 
   stopConversation(): void {
@@ -622,7 +661,7 @@ export class VoiceEngine {
     if (!this.session) return;
     const voice = this.createVoiceObject(config.voice);
     try {
-      await this.session.updateSession({
+      const sessionConfig: any = {
         modalities: ['audio', 'text'],
         instructions: config.instructions,
         voice,
@@ -636,7 +675,17 @@ export class VoiceEngine {
           silenceDurationInMs: this.silenceTimeout,
           createResponse: false,
         },
-      });
+      };
+      if (config.tools && config.tools.length > 0) {
+        sessionConfig.tools = config.tools.map((t) => ({
+          type: 'function' as const,
+          name: t.name,
+          description: t.description,
+          parameters: t.parameters,
+        }));
+        sessionConfig.toolChoice = 'auto';
+      }
+      await this.session.updateSession(sessionConfig);
       console.log('[VoiceEngine] Session configured successfully');
     } catch (error) {
       console.error('[VoiceEngine] Failed to configure session:', error);
@@ -671,7 +720,7 @@ export class VoiceEngine {
             this.audioCapture.currentSampleRate || 24000,
           );
           if (resampled.byteLength > 0 && this.paStreamingActive) {
-            stream.write(resampled);
+             try { stream.write(resampled); } catch { /* stream already closed */ }
           }
         });
       }
@@ -738,29 +787,7 @@ export class VoiceEngine {
 
   // ── Pronunciation Assessment ──────────────────────────────────
 
-  private async runPAForTurn(
-    turnTrace: TurnLatencyTrace,
-    referenceText: string,
-    useReferenceText: boolean,
-  ): Promise<[boolean, string]> {
-    const audioChunks16k = turnTrace.preparedPaAudio
-      ? turnTrace.preparedPaAudio
-      : turnTrace.paAudioPreparePromise
-        ? await turnTrace.paAudioPreparePromise
-        : await this.preparePAAudio();
-    turnTrace.preparedPaAudio = audioChunks16k;
-    turnTrace.paInputAt = performance.now();
-    const result = await this.startPAWithStream(referenceText, audioChunks16k, useReferenceText);
-    turnTrace.paOutputAt = performance.now();
-    turnTrace.paResultReadyAt = turnTrace.paOutputAt;
-    this.clearPAAudioCache();
-    turnTrace.paAudioPreparePromise = undefined;
-    turnTrace.preparedPaAudio = undefined;
-    turnTrace.paPromise = undefined;
-    return result;
-  }
-
-  private startStreamingPA(turnTrace: TurnLatencyTrace): void {
+  private startStreamingPA(turnTrace: TurnLatencyTrace, referenceText?: string): void {
     if (!this.speechConfig) return;
 
     const pushStream = speechSDK.AudioInputStream.createPushStream();
@@ -780,11 +807,12 @@ export class VoiceEngine {
       return;
     }
 
+    const hasRef = !!referenceText;
     const paConfig = new speechSDK.PronunciationAssessmentConfig(
-      '',
+      hasRef ? referenceText : '',
       speechSDK.PronunciationAssessmentGradingSystem.HundredMark,
       speechSDK.PronunciationAssessmentGranularity.Phoneme,
-      false,
+      hasRef,
     );
     paConfig.enableProsodyAssessment = true;
     paConfig.applyTo(reco);
@@ -843,78 +871,6 @@ export class VoiceEngine {
     }
   }
 
-  private async preparePAAudio(): Promise<ArrayBuffer> {
-    const result = await AudioResampler.to16kHzPcm16(
-      this.audioChunksToAssess,
-      this.audioCapture.currentSampleRate || 24000,
-    );
-    this.audioChunksToAssess = [];
-    return result;
-  }
-
-  private startPAWithStream(
-    referenceText: string,
-    audioChunksToAssess: ArrayBuffer,
-    useReferenceText: boolean,
-  ): Promise<[boolean, string]> {
-    return new Promise((resolve) => {
-      let finished = false;
-      const safeResolve = (result: [boolean, string]) => {
-        if (finished) return;
-        finished = true;
-        resolve(result);
-      };
-
-      if (!this.speechConfig) {
-        safeResolve([false, '']);
-        return;
-      }
-      if (!audioChunksToAssess || audioChunksToAssess.byteLength === 0) {
-        safeResolve([false, '']);
-        return;
-      }
-
-      const pushStream = speechSDK.AudioInputStream.createPushStream();
-      pushStream.write(audioChunksToAssess);
-      pushStream.close();
-      const audioConfig = speechSDK.AudioConfig.fromStreamInput(pushStream);
-      let reco: speechSDK.SpeechRecognizer;
-      try {
-        reco = new speechSDK.SpeechRecognizer(this.speechConfig, audioConfig);
-      } catch {
-        safeResolve([false, '']);
-        return;
-      }
-
-      const paConfig = new speechSDK.PronunciationAssessmentConfig(
-        useReferenceText ? referenceText : '',
-        speechSDK.PronunciationAssessmentGradingSystem.HundredMark,
-        speechSDK.PronunciationAssessmentGranularity.Phoneme,
-        useReferenceText,
-      );
-      paConfig.enableProsodyAssessment = true;
-      paConfig.applyTo(reco);
-
-      const PAResults: string[] = [];
-      reco.recognized = (_s: any, e: any) => {
-        const json = e.result.properties.getProperty(speechSDK.PropertyId.SpeechServiceResponse_JsonResult);
-        if (json) PAResults.push(json);
-      };
-      reco.sessionStopped = () => {
-        reco.stopContinuousRecognitionAsync();
-        reco.close();
-        safeResolve([true, `[${PAResults.join(',')}]`]);
-      };
-      reco.canceled = (_s: any, e: any) => {
-        reco.stopContinuousRecognitionAsync();
-        if (e.errorCode !== speechSDK.CancellationErrorCode.NoError) {
-          safeResolve([false, '']);
-        }
-      };
-      reco.startContinuousRecognitionAsync();
-    });
-  }
-
   // ── Audio caching helpers ─────────────────────────────────────
 
   private cacheAudioChunks(chunk: Uint8Array): void {
@@ -924,26 +880,8 @@ export class VoiceEngine {
     this.audioTimeline.totalBytes = end;
   }
 
-  private extractValidAudio(): void {
-    if (this.audioStartMillis == null || this.audioEndMillis == null || this.audioEndMillis < this.audioStartMillis) return;
-    const bytesPerMs = (this.audioCapture.currentSampleRate ?? 24000) * 2 / 1000;
-    const startByte = Math.floor(this.audioStartMillis * bytesPerMs);
-    const endByte = Math.ceil(this.audioEndMillis * bytesPerMs);
-    for (const c of this.audioChunks) {
-      if (c.endByte <= startByte) continue;
-      if (c.startByte >= endByte) break;
-      const sliceStart = Math.max(startByte, c.startByte) - c.startByte;
-      const sliceEnd = Math.min(endByte, c.endByte) - c.startByte;
-      this.audioChunksToAssess.push(c.bytes.slice(sliceStart, sliceEnd));
-    }
-    this.audioChunks = [];
-    this.audioStartMillis = null;
-    this.audioEndMillis = null;
-  }
-
   private clearPAAudioCache(): void {
     this.audioChunks = [];
-    this.audioChunksToAssess = [];
     this.audioStartMillis = null;
     this.audioEndMillis = null;
   }
@@ -955,15 +893,21 @@ export class VoiceEngine {
 
     const latencyLabel = this.latencyTracker.buildLatencyLabel(trace);
     const content = `${trace.userText}\n[${latencyLabel}]`;
+    if (this.referenceTextForDisplay) {
+      trace.referenceTextHtml = `<div class="text-xs text-gray-500 italic mt-1 border-l-2 border-gray-600 pl-2">Expected: ${this.escHtml(this.referenceTextForDisplay)}</div>`;
+      this.referenceTextForDisplay = undefined;
+    }
+    const refHtml = trace.referenceTextHtml || '';
     let contentHtml: string | undefined;
     if (trace.wordSpansHtml) {
       contentHtml =
-        `<div>${this.escHtml(trace.userText)}</div>` +
         `<div class="mt-1">${trace.wordSpansHtml}</div>` +
+        refHtml +
         `<div class="text-xs text-gray-400 mt-1">${latencyLabel}</div>`;
     } else {
       contentHtml =
         `<div>${this.escHtml(trace.userText)}</div>` +
+        refHtml +
         `<div class="text-xs text-gray-400 mt-1">${latencyLabel}</div>`;
     }
 
@@ -979,6 +923,19 @@ export class VoiceEngine {
     // Record metric
     const metric = this.latencyTracker.recordTurn(trace, this.currentScenarioId);
     this.callbacks?.onLatencyMetric?.(metric);
+  }
+
+  private ensureAssistantBubble(): void {
+    if (!this.assistantBubbleCreated && this.currentAssistantMessageId) {
+      this.assistantBubbleCreated = true;
+      this.callbacks?.onConversationMessageUpdate({
+        role: 'assistant',
+        content: '',
+        timestamp: this.messageStartTime || new Date(),
+        messageId: this.currentAssistantMessageId,
+        isStreaming: true,
+      });
+    }
   }
 
   private escHtml(text: string): string {

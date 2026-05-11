@@ -1,7 +1,22 @@
 import { ScenarioBase } from '../ScenarioBase.js';
 import { getConversationPrompt, getConcisePrompt, getReadAlongPrompt } from './prompts.js';
-import type { ScenarioId } from '../../core/types.js';
+import type { ScenarioId, FunctionToolDefinition } from '../../core/types.js';
 import { buildLanguageOptions } from '../../core/types.js';
+
+const SET_REFERENCE_TEXT_TOOL: FunctionToolDefinition = {
+  name: 'set_reference_text',
+  description: 'Set the reference text for pronunciation assessment when leading read-along exercises. Call this every time you provide a sentence for the user to read aloud.',
+  parameters: {
+    type: 'object',
+    properties: {
+      reference_text: {
+        type: 'string',
+        description: 'The sentence for the user to read aloud. Only the sentence text, without quotes or prefixes.',
+      },
+    },
+    required: ['reference_text'],
+  },
+};
 
 export class FreeConversationScenario extends ScenarioBase {
   private mode: 'conversation' | 'concise' | 'readAlong' = 'conversation';
@@ -11,6 +26,9 @@ export class FreeConversationScenario extends ScenarioBase {
   get label(): string { return 'Free Conversation'; }
   get icon(): string { return '\u{1F3A4}'; }
   get enablePA(): boolean { return true; }
+  get tools(): FunctionToolDefinition[] {
+    return this.mode === 'readAlong' ? [SET_REFERENCE_TEXT_TOOL] : [];
+  }
 
   getInstructions(): string {
     switch (this.mode) {

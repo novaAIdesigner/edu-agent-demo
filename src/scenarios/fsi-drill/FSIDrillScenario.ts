@@ -1,7 +1,22 @@
 import { ScenarioBase } from '../ScenarioBase.js';
 import { getFSIDrillPrompt } from './prompts.js';
-import type { ScenarioId } from '../../core/types.js';
+import type { ScenarioId, FunctionToolDefinition } from '../../core/types.js';
 import { buildLanguageOptions } from '../../core/types.js';
+
+const SET_REFERENCE_TEXT_TOOL: FunctionToolDefinition = {
+  name: 'set_reference_text',
+  description: 'Set the expected answer for pronunciation assessment in drill exercises. Call this every time you give a cue, passing the full expected sentence the student should say.',
+  parameters: {
+    type: 'object',
+    properties: {
+      reference_text: {
+        type: 'string',
+        description: 'The full expected sentence the student should produce after applying the cue.',
+      },
+    },
+    required: ['reference_text'],
+  },
+};
 
 export class FSIDrillScenario extends ScenarioBase {
   private drillType = 'substitution';
@@ -12,6 +27,7 @@ export class FSIDrillScenario extends ScenarioBase {
   get label(): string { return 'FSI Drills'; }
   get icon(): string { return '\u{1F504}'; }
   get enablePA(): boolean { return true; }
+  get tools(): FunctionToolDefinition[] { return [SET_REFERENCE_TEXT_TOOL]; }
 
   getInstructions(): string {
     return getFSIDrillPrompt(this.drillType, this.language, this.pattern);

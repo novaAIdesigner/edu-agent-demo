@@ -7,8 +7,13 @@ export interface ScenarioConfig {
   instructions: string;
   voice: string;
   enablePA: boolean;
-  paWithReferenceText: boolean;
   silenceTimeoutMs: number;
+}
+
+export interface FunctionToolDefinition {
+  name: string;
+  description: string;
+  parameters: Record<string, unknown>;
 }
 
 export interface VoiceEngineConfig {
@@ -19,9 +24,10 @@ export interface VoiceEngineConfig {
   instructions: string;
   debugMode?: boolean;
   enablePronunciationAssessment?: boolean;
-  paWithReferenceText?: boolean;
   recognitionLanguage?: string;
   deploymentName?: string;
+  tools?: FunctionToolDefinition[];
+  proactiveGreeting?: boolean;
 }
 
 export interface ConversationMessage {
@@ -55,6 +61,7 @@ export interface TurnLatencyTrace {
   userMessageTimestamp?: Date;
   wordSpansHtml?: string;
   paScoreLabel?: string;
+  referenceTextHtml?: string;
 }
 
 export interface TurnMetric {

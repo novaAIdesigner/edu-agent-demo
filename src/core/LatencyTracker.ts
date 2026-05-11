@@ -87,16 +87,16 @@ export class LatencyTracker {
   }
 
   buildLatencyLabel(trace: TurnLatencyTrace): string {
-    const paLatency =
-      trace.paInputAt != null && trace.paOutputAt != null
-        ? `${Math.round(trace.paOutputAt - trace.paInputAt)} ms`
+    const finalLatency =
+      trace.paResultReadyAt != null
+        ? `${Math.round(trace.paResultReadyAt - trace.speechStoppedAt)} ms`
         : 'N/A';
     const e2eLatency =
       trace.firstAudioChunkAt != null
         ? `${Math.round(trace.firstAudioChunkAt - trace.speechStoppedAt)} ms`
         : 'pending';
 
-    return `PA: ${paLatency} | E2E: ${e2eLatency}`;
+    return `PA latency: ${finalLatency} | E2E: ${e2eLatency}`;
   }
 
   clear(): void {

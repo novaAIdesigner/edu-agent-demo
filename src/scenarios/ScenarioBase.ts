@@ -2,7 +2,7 @@ import { VoiceEngine } from '../core/VoiceEngine.js';
 import { configManager } from '../core/config.js';
 import { ConversationPanel } from '../ui/ConversationPanel.js';
 import { AudioLevelMeter } from '../ui/AudioLevelMeter.js';
-import type { ScenarioId, VoiceEngineConfig, ConversationMessage } from '../core/types.js';
+import type { ScenarioId, VoiceEngineConfig, ConversationMessage, FunctionToolDefinition } from '../core/types.js';
 
 export abstract class ScenarioBase {
   protected engine: VoiceEngine;
@@ -25,7 +25,8 @@ export abstract class ScenarioBase {
   abstract renderControls(container: HTMLElement): void;
 
   get enablePA(): boolean { return true; }
-  get paWithReferenceText(): boolean { return true; }
+  get tools(): FunctionToolDefinition[] { return []; }
+  get proactiveGreeting(): boolean { return true; }
 
   getPanel(): HTMLElement {
     return this.panel;
@@ -113,7 +114,8 @@ export abstract class ScenarioBase {
       instructions: this.getInstructions(),
       debugMode: s.debugMode,
       enablePronunciationAssessment: this.enablePA,
-      paWithReferenceText: this.paWithReferenceText,
+      tools: this.tools,
+      proactiveGreeting: this.proactiveGreeting,
       recognitionLanguage: s.recognitionLanguage,
       deploymentName: s.deploymentName,
     };
@@ -123,12 +125,18 @@ export abstract class ScenarioBase {
       onConnectionStatusChange: (st) => {
         this.connectBtn.textContent = st === 'connected' ? 'Disconnect' : 'Connect';
         this.startBtn.disabled = st !== 'connected';
+        if (st === 'disconnected') {
+          this.showSidebar();
+        }
       },
       onAssistantStatusChange: () => {},
       onConversationMessage: (msg) => this.conversationPanel.addMessage(msg),
       onConversationMessageUpdate: (msg) => this.conversationPanel.updateMessage(msg),
       onEventReceived: () => {},
-      onError: (err) => this.conversationPanel.addMessage({ role: 'error', content: err, timestamp: new Date() }),
+      onError: (err) => {
+        this.conversationPanel.addMessage({ role: 'error', content: err, timestamp: new Date() });
+        this.showSidebar();
+      },
       onAudioLevel: (level) => this.levelMeter.setLevel(level),
     });
 
@@ -148,10 +156,30 @@ export abstract class ScenarioBase {
       this.engine.stopConversation();
       this.startBtn.textContent = 'Start Conversation';
       this.startBtn.className = this.startBtn.className.replace('bg-red-600 hover:bg-red-500', 'bg-emerald-600 hover:bg-emerald-500');
+      this.showSidebar();
     } else {
       await this.engine.startConversation();
       this.startBtn.textContent = 'Stop Conversation';
       this.startBtn.className = this.startBtn.className.replace('bg-emerald-600 hover:bg-emerald-500', 'bg-red-600 hover:bg-red-500');
+      this.hideSidebar();
+    }
+  }
+
+  private hideSidebar(): void {
+    const sidebar = this.panel.querySelector(`#sidebar-${this.id}`) as HTMLElement | null;
+    const showBtn = this.panel.querySelector(`#sidebar-show-${this.id}`) as HTMLElement | null;
+    if (sidebar && showBtn) {
+      sidebar.classList.add('hidden');
+      showBtn.classList.remove('hidden');
+    }
+  }
+
+  private showSidebar(): void {
+    const sidebar = this.panel.querySelector(`#sidebar-${this.id}`) as HTMLElement | null;
+    const showBtn = this.panel.querySelector(`#sidebar-show-${this.id}`) as HTMLElement | null;
+    if (sidebar && showBtn) {
+      showBtn.classList.add('hidden');
+      sidebar.classList.remove('hidden');
     }
   }
 

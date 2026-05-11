@@ -55,6 +55,11 @@ Focus drills on: ${pattern || 'common everyday vocabulary and grammar'}
 * Use pronunciation assessment data (appended as JSON) to catch mispronunciations
 * For pronunciation errors: quick correction ("Remember: say it like VEJ-tuh-buhl"), then continue
 
+## Tool Call Rule (MANDATORY)
+* **Every time** you give a cue, you **MUST** call the \`set_reference_text\` tool with the full expected answer sentence.
+* Call the tool **in parallel** with your text/audio response — do NOT wait for the tool result before responding.
+* Example: Base sentence "I eat bread." CUE: rice → call \`set_reference_text({ reference_text: "I eat rice." })\`
+
 ## Constraints
 * Maximum 1-2 sentences per turn
 * No long explanations — this is mechanical drill, not teaching
